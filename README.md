@@ -1,6 +1,6 @@
 # embed-check
 
-A modular Bash tool to check, install, and summarize the status of common microcontroller development toolchains on Fedora/Linux systems. Designed for both interactive use and CI/CD pipelines.
+A modular Bash tool to check, install, and summarize the status of common microcontroller development toolchains on Linux, macOS, and Windows (with Bash). Designed for both interactive use and CI/CD pipelines.
 
 ## Features
 - Checks and installs toolchains for STM32, Espressif, Arduino, TI, Microchip, and more
@@ -8,6 +8,7 @@ A modular Bash tool to check, install, and summarize the status of common microc
 - Idempotent and safe to re-run
 - Verbose mode for extra info and sources
 - Easily extensible: add more tools or families as needed
+- **Cross-platform:** Auto-detects your OS and uses the right package manager or provides manual instructions
 
 ## Quick Install
 Install the latest version directly from GitHub with this one-liner:
@@ -15,6 +16,9 @@ Install the latest version directly from GitHub with this one-liner:
 ```sh
 curl -sSL https://raw.githubusercontent.com/shawal-mbalire/embed-check/master/embed-check.sh | sudo tee /usr/local/bin/embed-check > /dev/null && sudo chmod +x /usr/local/bin/embed-check
 ```
+
+- On **Linux** and **macOS**, this will install `embed-check` to `/usr/local/bin` and make it executable.
+- On **Windows**, run the same command in Git Bash or WSL, or download the script and run it with `bash embed-check.sh`. The script will auto-detect your OS and provide the right instructions or actions for your system.
 
 Then run:
 ```sh

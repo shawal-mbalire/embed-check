@@ -1,0 +1,28 @@
+name: Test embed-check Installation
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  test-install:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - name: Set up shell
+        uses: actions/checkout@v3
+      - name: Install embed-check
+        shell: bash
+        run: |
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            curl -sSL https://raw.githubusercontent.com/shawal-mbalire/embed-check/master/embed-check.sh -o embed-check.sh
+            bash embed-check.sh list
+          else
+            curl -sSL https://raw.githubusercontent.com/shawal-mbalire/embed-check/master/embed-check.sh | sudo tee /usr/local/bin/embed-check > /dev/null
+            sudo chmod +x /usr/local/bin/embed-check
+            embed-check list
+          fi 

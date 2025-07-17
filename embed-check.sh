@@ -135,6 +135,45 @@ STM32CUBECLT_INSTALLER="stm32cubeclt_installer.sh"
 STM32CUBECLT_BIN="/usr/local/bin/stm32cubeclt"
 STM32CUBECLT_SOURCE_URL="https://www.st.com/en/development-tools/stm32cubeclt.html#get-software"
 
+# OS detection and package manager abstraction
+OS="unknown"
+PKG_INSTALL="echo 'Install not supported'"
+PKG_SEARCH="echo 'Search not supported'"
+
+if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+  if [ -f /etc/os-release ]; then
+    . /etc/os-release
+    case "$ID" in
+      fedora)
+        OS="fedora"
+        PKG_INSTALL="sudo dnf install -y"
+        PKG_SEARCH="dnf search"
+        ;;
+      ubuntu|debian)
+        OS="debian"
+        PKG_INSTALL="sudo apt-get install -y"
+        PKG_SEARCH="apt-cache search"
+        ;;
+      arch)
+        OS="arch"
+        PKG_INSTALL="sudo pacman -S --noconfirm"
+        PKG_SEARCH="pacman -Ss"
+        ;;
+      *)
+        OS="$ID"
+        ;;
+    esac
+  fi
+elif [[ "$OSTYPE" == "darwin"* ]]; then
+  OS="macos"
+  PKG_INSTALL="brew install"
+  PKG_SEARCH="brew search"
+elif [[ "$OSTYPE" == "msys"* || "$OSTYPE" == "cygwin"* || "$OSTYPE" == "win32" ]]; then
+  OS="windows"
+  PKG_INSTALL="echo 'Please install manually via choco, scoop, or winget.'"
+  PKG_SEARCH="echo 'Please search manually via choco, scoop, or winget.'"
+fi
+
 # Function to check and display status
 check_tool() {
   local tool="$1"
@@ -156,9 +195,9 @@ check_tool() {
     else
       echo "${RED}  $tool is NOT installed.${NC}"
       echo "${YELLOW}  Searching for packages with '$search_terms':${NC}"
-      dnf search "$search_terms"
+      $PKG_SEARCH "$search_terms"
       if [ -n "$install_command" ]; then
-        echo "${YELLOW}  You can try installing it with: sudo dnf install $install_command${NC}"
+        echo "${YELLOW}  You can try installing it with: $PKG_INSTALL $install_command${NC}"
       fi
       return 1
     fi
@@ -195,9 +234,9 @@ check_company_tools() {
       echo "${color}--- Checking for $tool ---${NC}"
       echo "${RED}  $tool is NOT installed.${NC}"
       echo "${YELLOW}  Searching for packages with '$search_terms':${NC}"
-      dnf search "$search_terms"
+      $PKG_SEARCH "$search_terms"
       if [ -n "$install_command" ]; then
-        echo "${YELLOW}  You can try installing it with: sudo dnf install $install_command${NC}"
+        echo "${YELLOW}  You can try installing it with: $PKG_INSTALL $install_command${NC}"
       fi
     fi
   done
@@ -319,44 +358,44 @@ if $AUTO_INSTALL; then
   # STM32 tools
   if [ "$stm32_gcc_status" = "NOT Installed" ]; then
     echo "Installing arm-none-eabi-gcc..."
-    sudo dnf install -y arm-none-eabi-gcc-cs.x86_64
+    $PKG_INSTALL $(get_pkg_name arm-none-eabi-gcc)
   fi
   if [ "$stm32_gdb_status" = "NOT Installed" ]; then
     echo "Installing arm-none-eabi-binutils..."
-    sudo dnf install -y arm-none-eabi-binutils
+    $PKG_INSTALL $(get_pkg_name arm-none-eabi-gdb)
   fi
   if [ "$stflash_status" = "NOT Installed" ]; then
     echo "Installing stlink..."
-    sudo dnf install -y stlink
+    $PKG_INSTALL $(get_pkg_name st-flash)
   fi
   if [ "$openocd_status" = "NOT Installed" ]; then
     echo "Installing openocd..."
-    sudo dnf install -y openocd.x86_64
+    $PKG_INSTALL $(get_pkg_name openocd)
   fi
   # NXP, TI, Microchip, etc. use arm-none-eabi-gcc, already covered above
   # Nuvoton
   if [ "$nuvoton_tools_found" = "NOT Installed" ]; then
     echo "Installing nu-isp-cli..."
-    sudo dnf install -y nu-isp-cli
+    $PKG_INSTALL $(get_pkg_name nu-isp-cli)
   fi
   # GigaDevice (no package, skip)
   # Espressif
   if [ "$esp32gcc_status" = "Likely NOT Installed" ]; then
     echo "Installing xtensa-esp32-elf-gcc..."
-    sudo dnf install -y xtensa-esp32-elf-gcc
+    $PKG_INSTALL $(get_pkg_name xtensa-esp32-elf-gcc)
   fi
   if [ "$esptool_status" = "Likely NOT Installed" ] || [ "$esptool_status" = "NOT Installed" ]; then
     echo "Installing esptool via dnf..."
-    sudo dnf install -y esptool.noarch
+    $PKG_INSTALL $(get_pkg_name esptool)
   fi
   # General build tools
   if [ "$cmake_status" = "NOT Installed" ]; then
     echo "Installing cmake..."
-    sudo dnf install -y cmake
+    $PKG_INSTALL $(get_pkg_name cmake)
   fi
   if [ "$make_status" = "NOT Installed" ]; then
     echo "Installing make..."
-    sudo dnf install -y make
+    $PKG_INSTALL $(get_pkg_name make)
   fi
   # Arduino CLI
   if [ "$arduino_cli_status" = "NOT Installed" ]; then
@@ -377,7 +416,7 @@ if $AUTO_INSTALL; then
   fi
   if [ "$avrdude_status" = "NOT Installed" ]; then
     echo "Installing avrdude..."
-    sudo dnf install -y avrdude
+    $PKG_INSTALL $(get_pkg_name avrdude)
   fi
   # ESP-IDF: no package, just print instructions in verbose mode
 fi
