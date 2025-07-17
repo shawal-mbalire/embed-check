@@ -613,5 +613,3 @@ if [[ ${#installed_by_script[@]} -gt 0 ]]; then
     echo -e "  ${GREEN}$pkg${NC}"
   done
 fi
-
-echo -e "\033[1;32mHello! embed-check is installed and ready to use.\033[0m"
