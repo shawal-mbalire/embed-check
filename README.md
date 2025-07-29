@@ -119,7 +119,12 @@ requirements.txt    # Python dependencies
 -   **Debugging Command:** Introduce an `embed debug` command to facilitate debugging sessions on target boards.
 -   **More Language Support:** Explore adding support for other embedded programming languages (e.g., Assembly, Go).
 -   **GUI (Optional):** Consider developing a web-based or desktop graphical user interface for an even more accessible and user-friendly experience.
--   **Comprehensive Testing:** Implement robust unit and integration tests for the Python frontend to ensure reliability and prevent regressions.
+-   **Improved Error Handling:** Enhance error reporting across both Bash and Python components for consistency and clarity.
+-   **Robust Configuration Management:** Implement more centralized and flexible board definition management, potentially allowing user-defined board paths.
+-   **Python Unit and Integration Tests:** Develop comprehensive unit and integration tests for the Python frontend to ensure reliability and prevent regressions.
+-   **Standardized Output:** Introduce machine-readable output options (e.g., JSON) for Bash scripts to improve programmatic interaction and parsing by the Python frontend.
+-   **Minimize Sudo Usage:** Explore alternatives to system-wide `sudo` installations for toolchains, favoring user-local installations or tool version managers.
+-   **Dependency Verification:** Add checks for minimum required versions of external tools to ensure compatibility.
 
 ## License
 

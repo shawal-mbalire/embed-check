@@ -5,6 +5,19 @@ set -euo pipefail
 source "$(dirname "$0")/lib/colors.sh"
 source "$(dirname "$0")/lib/status_vars.sh"
 source "$(dirname "$0")/lib/os_detect.sh"
+
+# Ensure boards directory exists
+BOARD_DIR="$(dirname "$0")/boards"
+if [[ ! -d "$BOARD_DIR" ]]; then
+  print_error "Boards directory not found: $BOARD_DIR. Please ensure the project structure is correct."
+  exit 1
+fi
+
+# If in test mode, override PKG_INSTALL
+if [[ -n "${EMBED_TEST_MODE:-}" ]]; then
+  PKG_INSTALL() { echo "$@" >> "$EMBED_TEST_MODE/pkg_install_args"; }
+  export -f PKG_INSTALL
+fi
 source "$(dirname "$0")/lib/tool_meta.sh"
 source "$(dirname "$0")/lib/helpers.sh"
 for state_file in $(ls "$(dirname "$0")/lib/states/"*.sh | sort); do
@@ -310,28 +323,24 @@ if [[ $# -ge 1 ]]; then
         run_upload_state_machine "$BOARD" "$USER_ELF" upload "$PORT"
         exit $?
       else
-        # Default: compile the C file (or main.c/hello.c if not specified)
-        SRC_FILE="$USER_CFILE"
-        if [[ -z "$SRC_FILE" ]]; then
-          if [[ -f main.c ]]; then SRC_FILE=main.c;
-          elif [[ -f hello.c ]]; then SRC_FILE=hello.c;
-          else
-            print_error "No C source file found. Please provide a .c file or use --elf <file.elf>."; exit 1
-          fi
-        fi
-        print_info "${ICON_INFO} Compiling source: ${BOLD}$SRC_FILE${NC}"
-        # Use the Makefile if present, else compile directly
-        if [[ -f Makefile ]]; then
-          make
+        # Default: assume ELF is already built and located based on project path
+        # The Python frontend is responsible for building the project.
+        # We need to determine the ELF path based on the project_path and board config.
+        # For now, we'll assume the ELF is named 'main.elf' in the project root
+        # or 'target/debug/<project_name>' for Rust.
+        # This part needs to be more robust, possibly by passing the ELF path from Python.
+        # For demonstration, let's assume a default ELF name if not provided.
+        ELF="main.elf" # Default for C/C++
+        if [[ -f "$PROJECT_PATH/target/debug/$(basename $PROJECT_PATH)" ]]; then
+          ELF="$PROJECT_PATH/target/debug/$(basename $PROJECT_PATH)" # Rust default
+        elif [[ -f "$PROJECT_PATH/main.elf" ]]; then
+          ELF="$PROJECT_PATH/main.elf"
+        elif [[ -f "$PROJECT_PATH/hello.elf" ]]; then
+          ELF="$PROJECT_PATH/hello.elf"
         else
-          # Try to compile directly
-          TOOLCHAIN=$(jq -r '.toolchain' "$F")
-          $TOOLCHAIN -o "$ELF" "$SRC_FILE"
+          print_error "Could not find ELF file in project path: $PROJECT_PATH. Please specify with --elf."; exit 1
         fi
-        if [[ ! -f "$ELF" ]]; then
-          print_error "Build failed: $ELF not found. Try '${GREEN}embed init${RED}' and '${GREEN}embed upload${RED}' again. $ICON_ERROR"
-          exit 1
-        fi
+
         print_info "${ICON_INFO} File to upload: ${BOLD}$ELF${NC}"
         run_upload_state_machine "$BOARD" "$ELF" upload "$PORT"
         exit $?

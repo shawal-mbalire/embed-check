@@ -1,4 +1,5 @@
 check_tools_state() {
+  local IS_CHECK_TOOLS_MODE=false
   for meta in "${TOOLS_META[@]}"; do
     IFS='|' read -r family name cmd status_var install_pkg special <<< "$meta"
     check_and_update_status "$cmd" "$status_var" "$special"

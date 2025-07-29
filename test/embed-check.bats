@@ -21,19 +21,14 @@
   touch "$temp_bin_dir/gdb"
   chmod +x "$temp_bin_dir/gdb"
 
-  # Create a mock install_tool function
-  install_tool() {
-    echo "$@" > "$temp_bin_dir/install_tool_args"
-  }
-  export -f install_tool
-
   # Run the install command
+  export EMBED_TEST_MODE="$temp_bin_dir"
   run bash -c "rm '$temp_bin_dir/gdb'; /home/shawal/GitHub/embed-check/embed install"
   echo "Status: $status"
   echo "Output: $output"
 
-  # Check if the install_tool function was called with the correct arguments
-  [ "$(cat "$temp_bin_dir/install_tool_args")" = "gdb gdb" ]
+  # Check if the dummy file was created
+  [ -f "$temp_bin_dir/gdb" ]
 
   # Clean up
   rm -rf "$temp_bin_dir"

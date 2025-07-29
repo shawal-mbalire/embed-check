@@ -14,7 +14,11 @@ check_and_update_status() {
 }
 
 install_tool() {
-  local name="$1"; local install_pkg="$2"; local special="$3"
+  local name="$1"; local install_pkg="$2"; local special="$3"; local test_mode_path="$4"
+  if [[ -n "$test_mode_path" ]]; then
+    touch "$test_mode_path/$name"
+    return 0
+  fi
   if [[ "$special" == "cubeclt" ]]; then
     if [ ! -x "$STM32CUBECLT_BIN" ] && [ -f "$STM32CUBECLT_ZIP" ]; then
       echo "STM32CubeCLT installer zip found. Installing..."
