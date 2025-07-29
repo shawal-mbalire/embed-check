@@ -1,0 +1,10 @@
+{
+  "name": "TI Tiva C LaunchPad",
+  "family": "tivac",
+  "mcu": "cortex-m4",
+  "toolchain": "arm-none-eabi-gcc",
+  "output": "hello.elf",
+  "upload": "lm4flash -d {port} {elf}",
+  "debug": "openocd -f openocd/ek-tm4c123gxl.cfg & arm-none-eabi-gdb {elf} -ex 'target remote localhost:3333'",
+  "usb_ids": ["1cbe:00fd"]
+} 

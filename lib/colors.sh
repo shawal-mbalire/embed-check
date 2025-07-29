@@ -1,0 +1,36 @@
+# Colors
+export GREEN='\033[0;32m'
+export RED='\033[0;31m'
+export BLUE='\033[0;34m'
+export YELLOW='\033[0;33m'
+export MAGENTA='\033[0;35m'
+export CYAN='\033[0;36m'
+export NC='\033[0m' # No Color
+export BOLD='\033[1m'
+# Icons
+export STM32_COLOR="${BOLD}\033[38;5;33m"
+export NXP_COLOR="${BOLD}\033[38;5;129m"
+export TI_COLOR="${BOLD}\033[38;5;40m"
+export MICROCHIP_COLOR="${BOLD}\033[38;5;51m"
+export RENESAS_COLOR="${BOLD}\033[38;5;220m"
+export SILABS_COLOR="${BOLD}\033[38;5;208m"
+export INFINEON_COLOR="${BOLD}\033[38;5;196m"
+export NUVOTON_COLOR="${BOLD}\033[38;5;214m"
+export GIGADEVICE_COLOR="${BOLD}\033[38;5;45m"
+export ESPRESSIF_COLOR="${BOLD}\033[38;5;226m"
+export GENERAL_COLOR="${BOLD}\033[38;5;244m"
+export ARDUINO_COLOR="${BOLD}\033[38;5;202m"
+export ARDUINO_ICON="🟧"
+export STM32_ICON="🟦"
+export NXP_ICON="🟪"
+export TI_ICON="🟩"
+export MICROCHIP_ICON="🟦"
+export RENESAS_ICON="🟨"
+export SILABS_ICON="🟧"
+export INFINEON_ICON="🟥"
+export NUVOTON_ICON="🟧"
+export GIGADEVICE_ICON="🟦"
+export ESPRESSIF_ICON="🟨"
+export STATUS_INSTALLED_ICON="✔"
+export STATUS_NOT_INSTALLED_ICON="✖"
+export STATUS_LIKELY_NOT_INSTALLED_ICON="⚠'" 

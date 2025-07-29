@@ -1,0 +1,383 @@
+#!/bin/bash
+set -euo pipefail
+
+# Source all modules
+source "$(dirname "$0")/lib/colors.sh"
+source "$(dirname "$0")/lib/status_vars.sh"
+source "$(dirname "$0")/lib/os_detect.sh"
+source "$(dirname "$0")/lib/tool_meta.sh"
+source "$(dirname "$0")/lib/helpers.sh"
+for state_file in $(ls "$(dirname "$0")/lib/states/"*.sh | sort); do
+  source "$state_file"
+done
+for family_file in $(ls "$(dirname "$0")/families/"*.sh | sort); do
+  source "$family_file"
+done
+
+# Icon and color helpers with Unicode/ASCII fallback
+BOLD="\033[1m"; CYAN="\033[36m"; GREEN="\033[32m"; YELLOW="\033[33m"; RED="\033[31m"; NC="\033[0m"
+# Detect Unicode support and allow override
+if [[ "${NO_EMBED_ICONS:-}" == "1" || "$(locale charmap 2>/dev/null)" != "UTF-8" ]]; then
+  ICON_UPLOAD="[UPL]"; ICON_DEBUG="[DBG]"; ICON_BOARD="[BRD]"; ICON_SUCCESS="[OK]"; ICON_ERROR="[ERR]"; ICON_WARN="[WARN]"; ICON_INFO="[i]"; ICON_ARROW="->"
+else
+  ICON_UPLOAD="🚀"; ICON_DEBUG="🐞"; ICON_BOARD="🛠"; ICON_SUCCESS="✔"; ICON_ERROR="✖"; ICON_WARN="⚠"; ICON_INFO="ℹ"; ICON_ARROW="➜"
+fi
+print_divider() { echo -e "${CYAN}────────────────────────────────────────────${NC}"; }
+print_header()   { print_divider; echo -e "${BOLD}${CYAN}$1${NC}"; print_divider; }
+print_success()  { echo -e "${GREEN}${ICON_SUCCESS} $1${NC}"; }
+print_error()    { echo -e "${RED}${ICON_ERROR} $1${NC}"; print_divider; }
+print_warn()     { echo -e "${YELLOW}${ICON_WARN} $1${NC}"; }
+print_info()     { echo -e "${CYAN}${ICON_INFO} $1${NC}"; }
+print_table_header() { printf "${BOLD}${ICON_BOARD} %-18s %-20s${NC}\n" "$1" "$2"; print_divider; }
+
+# --- Board CLI Subcommands ---
+list_boards() {
+  print_divider
+  print_table_header "Board Name" "Config File"
+  for f in boards/*.json; do
+    local name; name=$(jq -r '.name' "$f")
+    local fname; fname=$(basename "$f" .json)
+    printf "${ICON_BOARD} %-18s %-20s\n" "$name" "$fname"
+  done
+  print_divider
+}
+
+search_boards() {
+  local pattern="$1"
+  print_divider
+  print_table_header "Board Name" "Config File"
+  for f in boards/*.json; do
+    local name; name=$(jq -r '.name' "$f")
+    local fname; fname=$(basename "$f" .json)
+    if [[ "${name,,}" == *"${pattern,,}"* ]] || [[ "$fname" == *"${pattern,,}"* ]]; then
+      printf "${ICON_BOARD} %-18s %-20s\n" "$name" "$fname"
+    fi
+  done
+  print_divider
+}
+
+# Enhanced board auto-detect by USB ID
+find_board_by_usb() {
+  local lsusb_out; lsusb_out=$(lsusb)
+  for f in boards/*.json; do
+    local ids; ids=$(jq -r '.usb_ids[]?' "$f")
+    for id in $ids; do
+      if echo "$lsusb_out" | grep -iq "$id"; then
+        echo "$f"
+        return 0
+      fi
+    done
+  done
+  return 1
+}
+
+# Enhanced get_board_file to use auto-detect by USB ID
+get_board_file() {
+  local board="${1:-}"
+  local project_path="${2:-}"
+  if [[ -z "$board" && -f "$project_path/.board.json" ]]; then
+    echo "$project_path/.board.json"; return 0
+  fi
+  if [[ -z "$board" ]]; then
+    local auto; auto=$(find_board_by_usb)
+    if [[ -n "$auto" ]]; then
+      echo "$auto"; return 0
+    fi
+  fi
+  for f in boards/*.json; do
+    local fname; fname=$(basename "$f" .json)
+    local bname; bname=$(jq -r '.name' "$f" | tr '[:upper:]' '[:lower:]')
+    if [[ "$fname" == *"${board,,}"* ]] || [[ "$bname" == *"${board,,}"* ]]; then
+      echo "$f"
+      return 0
+    fi
+  done
+  return 1
+}
+
+run_board_cmd() {
+  local board="$1" elf="$2" cmdtype="$3" port="${4:-}"
+  local f; f=$(get_board_file "$board") || { print_error "Board not found! $ICON_BOARD"; return 1; }
+  local cmd; cmd=$(jq -r ".${cmdtype}" "$f")
+  local openocd_cfg; openocd_cfg=$(jq -r '.openocd_board // empty' "$f")
+  cmd="${cmd//\{elf\}/$elf}"
+  if [[ -n "$port" ]]; then
+    cmd="${cmd//\{port\}/$port}"
+  fi
+  if [[ -n "$openocd_cfg" ]]; then
+    cmd="${cmd//\{openocd_cfg\}/$openocd_cfg}"
+  fi
+  print_info "${ICON_INFO} Running: $cmd"
+  eval "$cmd"
+}
+
+# --- Enhanced port detection ---
+list_serial_ports() {
+  ls /dev/ttyACM* /dev/ttyUSB* 2>/dev/null | grep -E '/dev/tty(ACM|USB)[0-9]+' || echo ""
+}
+
+# Enhanced board selection with fzf preview
+init_project() {
+  print_divider
+  local OPENOCD_BOARD_DIR="${EMBED_OPENOCD_BOARD_DIR:-/usr/share/openocd/scripts/board}"
+  local board_cfgs=(${OPENOCD_BOARD_DIR}/*.cfg)
+  if [[ ${#board_cfgs[@]} -eq 0 ]]; then
+    print_error "No OpenOCD board configs found!"; exit 1
+  fi
+  local selected_cfg
+  if command -v fzf >/dev/null 2>&1; then
+    selected_cfg=$(printf "%s\n" "${board_cfgs[@]##*/}" | fzf --prompt="${CYAN}Select OpenOCD board config: ${NC}")
+  else
+    print_info "Available OpenOCD boards:"; local i=1
+    for cfg in "${board_cfgs[@]}"; do
+      echo -e "  [${YELLOW}$i${NC}] ${BOLD}${cfg##*/}${NC}"
+      ((i++))
+    done
+    read -p "${CYAN}Select board [1-${#board_cfgs[@]}]: ${NC}" idx
+    if [[ "$idx" =~ ^[0-9]+$ ]] && (( idx >= 1 && idx <= ${#board_cfgs[@]} )); then
+      selected_cfg="${board_cfgs[$((idx-1))]##*/}"
+    else
+      print_error "Invalid selection."; exit 1
+    fi
+  fi
+  if [[ -z "$selected_cfg" ]]; then print_error "No board selected."; exit 1; fi
+  # Write .board.json with the selected OpenOCD config
+  cat > .board.json <<EOF
+{
+  "openocd_board": "$selected_cfg"
+}
+EOF
+  print_success "Project initialized with OpenOCD board config: $selected_cfg $ICON_BOARD"
+  print_divider
+}
+
+# Enhanced port selection with fzf
+prompt_for_port() {
+  local ports; ports=( $(list_serial_ports) )
+  if [[ ${#ports[@]} -eq 0 ]]; then
+    echo -e "${RED}No serial ports found. Please connect your device and try again.${NC}"
+    exit 1
+  fi
+  if [[ ${#ports[@]} -eq 1 ]]; then
+    echo -e "${GREEN}Auto-detected port: ${ports[0]}${NC}"
+    echo "${ports[0]}"
+    return
+  fi
+  if command -v fzf >/dev/null 2>&1; then
+    local selected=$(printf "%s\n" "${ports[@]}" | fzf --prompt="${CYAN}Select port: ${NC}")
+    if [[ -z "$selected" ]]; then echo -e "${RED}No port selected.${NC}"; exit 1; fi
+    echo "$selected"
+    return
+  fi
+  echo -e "${CYAN}Available serial ports:${NC}"
+  local i=1
+  for port in "${ports[@]}"; do
+    echo -e "  [${YELLOW}$i${NC}] $port"
+    ((i++))
+  done
+  read -p "${CYAN}Select port [1-${#ports[@]}]: ${NC}" idx
+  if [[ "$idx" =~ ^[0-9]+$ ]] && (( idx >= 1 && idx <= ${#ports[@]} )); then
+    echo "${ports[$((idx-1))]}"
+  else
+    echo -e "${RED}Invalid selection.${NC}"; exit 1
+  fi
+}
+
+# State machine for compile/upload
+run_upload_state_machine() {
+  local state="BUILD"
+  local BOARD="$1" elf="$2" cmdtype="$3" port="$4"
+  local f; f=$(get_board_file "$BOARD") || { echo "Board not found!"; return 1; }
+  local cmd; cmd=$(jq -r ".${cmdtype}" "$f")
+  cmd="${cmd//\{elf\}/$elf}"
+  if [[ -n "$port" ]]; then
+    cmd="${cmd//\{port\}/$port}"
+  fi
+  echo "Running: $cmd"
+  eval "$cmd"
+}
+
+# --- CLI Entrypoint ---
+# Friendly welcome message
+if [[ $# -eq 0 ]]; then
+  print_header "Welcome to embed! $ICON_BOARD"
+  echo -e "Usage: ${BOLD}embed <command> [options]${NC}"
+  print_info "Try '${GREEN}embed init${NC}' to set up your project, or '${GREEN}embed help${NC}' for all commands."
+  exit 0
+fi
+
+# Add a help command
+if [[ "$1" == "help" ]]; then
+  print_divider
+  cat <<EOF
+${BOLD}${ICON_BOARD} embed${NC} - Minimal MCU toolchain, upload, and debug CLI
+
+${CYAN}Usage:${NC}
+  ${GREEN}${ICON_ARROW} embed init${NC}                 # Select and set up a board for your project
+  ${GREEN}${ICON_ARROW} embed board list${NC}           # List all available boards
+  ${GREEN}${ICON_ARROW} embed board search <term>${NC}  # Search for a board
+  ${GREEN}${ICON_UPLOAD} embed upload [--port=...]${NC}  # Build and upload to the selected board
+  ${GREEN}${ICON_DEBUG} embed debug  [--port=...]${NC}  # Build and debug on the selected board
+  ${GREEN}${ICON_ARROW} embed help${NC}                 # Show this help message
+  ${GREEN}${ICON_ARROW} embed install${NC}              # Install required toolchains
+  ${GREEN}${ICON_ARROW} embed check-tools${NC}          # Check status of toolchains
+
+If you haven't run '${GREEN}embed init${NC}', you'll be prompted to select a board before uploading or debugging.
+EOF
+  print_divider
+  exit 0
+fi
+
+if [[ $# -ge 1 ]]; then
+  case "$1" in
+    new|add-module|compile)
+      python3 "$(dirname "$0")/src/main.py" "$@"; exit $?;;
+    install)
+      state="INIT"
+      while true; do
+        case "$state" in
+          INIT)          init_state "$@";;
+          PARSE_ARGS)    parse_args_state "$@";;
+          CHECK_TOOLS)   check_tools_state "$@";;
+          INSTALL_TOOLS) install_tools_state "$@";;
+          SUMMARY)       summary_state "$@";;
+          EXIT)          exit_state "$@";;
+          ERROR)         error_state "$@";;
+          *)             echo "Unknown state: $state"; exit 98;;
+        esac
+      done
+      ;;
+    check-tools)
+      IS_CHECK_TOOLS_MODE=true
+      state="INIT"
+      while true; do
+        case "$state" in
+          INIT)          init_state "$@";;
+          PARSE_ARGS)    parse_args_state "$@";;
+          CHECK_TOOLS)   check_tools_state "$@";;
+          SUMMARY)       summary_state "$@";;
+          EXIT)          exit_state "$@";;
+          ERROR)         error_state "$@";;
+          *)             echo "Unknown state: $state"; exit 98;;
+        esac
+      done
+      ;;
+    init)
+      init_project; exit 0;;
+    board)
+      python3 "$(dirname "$0")/src/main.py" "$@"; exit $?;;
+    upload)
+      BOARD=""
+      PORT=""
+      USER_ELF=""
+      USER_CFILE=""
+      ELF_MODE=0
+      for arg in "$@"; do
+        [[ "$arg" == --board=* ]] && BOARD="${arg#--board=}" && continue
+        [[ "$arg" == --port=* ]] && PORT="${arg#--port=}" && continue
+        [[ "$arg" == --elf ]] && ELF_MODE=1 && continue
+        [[ "$arg" == *.elf ]] && USER_ELF="$arg" && continue
+        [[ "$arg" == *.c ]] && USER_CFILE="$arg" && continue
+      done
+      PROJECT_PATH="$(pwd)"
+      for arg in "$@"; do
+        [[ "$arg" == --project-path=* ]] && PROJECT_PATH="${arg#--project-path=}" && continue
+      done
+
+      if [[ -z "$BOARD" && ! -f "$PROJECT_PATH/.board.json" ]]; then
+        print_error "No board selected. Please run '${GREEN}embed init${RED}' first. $ICON_BOARD"
+        exit 1
+      fi
+      if [[ -z "$BOARD" ]]; then
+        F="$PROJECT_PATH/.board.json"
+      else
+        F=$(get_board_file "$BOARD" "$PROJECT_PATH") || { print_error "Board not found! $ICON_BOARD"; exit 1; }
+      fi
+      OPENOCD_CFG=$(jq -r '.openocd_board' "$F")
+      if [[ -z "$PORT" ]]; then
+        PORT=$(prompt_for_port)
+      fi
+      ELF=$(jq -r '.output' "$F")
+      if (( ELF_MODE )); then
+        # User provided --elf and an ELF file
+        if [[ -z "$USER_ELF" ]]; then
+          print_error "No ELF file specified after --elf flag."; exit 1
+        fi
+        if [[ ! -f "$USER_ELF" ]]; then
+          print_error "ELF file '$USER_ELF' not found."; exit 1
+        fi
+        print_info "${ICON_INFO} File to upload: ${BOLD}$USER_ELF${NC}"
+        run_upload_state_machine "$BOARD" "$USER_ELF" upload "$PORT"
+        exit $?
+      else
+        # Default: compile the C file (or main.c/hello.c if not specified)
+        SRC_FILE="$USER_CFILE"
+        if [[ -z "$SRC_FILE" ]]; then
+          if [[ -f main.c ]]; then SRC_FILE=main.c;
+          elif [[ -f hello.c ]]; then SRC_FILE=hello.c;
+          else
+            print_error "No C source file found. Please provide a .c file or use --elf <file.elf>."; exit 1
+          fi
+        fi
+        print_info "${ICON_INFO} Compiling source: ${BOLD}$SRC_FILE${NC}"
+        # Use the Makefile if present, else compile directly
+        if [[ -f Makefile ]]; then
+          make
+        else
+          # Try to compile directly
+          TOOLCHAIN=$(jq -r '.toolchain' "$F")
+          $TOOLCHAIN -o "$ELF" "$SRC_FILE"
+        fi
+        if [[ ! -f "$ELF" ]]; then
+          print_error "Build failed: $ELF not found. Try '${GREEN}embed init${RED}' and '${GREEN}embed upload${RED}' again. $ICON_ERROR"
+          exit 1
+        fi
+        print_info "${ICON_INFO} File to upload: ${BOLD}$ELF${NC}"
+        run_upload_state_machine "$BOARD" "$ELF" upload "$PORT"
+        exit $?
+      fi
+      ;;
+    debug)
+      BOARD=""
+      PORT=""
+      for arg in "$@"; do
+        [[ "$arg" == --board=* ]] && BOARD="${arg#--board=}" && continue
+        [[ "$arg" == --port=* ]] && PORT="${arg#--port=}" && continue
+      done
+      if [[ -z "$BOARD" && ! -f .board.json ]]; then
+        print_error "No board selected. Please run '${GREEN}embed init${RED}' first."
+        exit 1
+      fi
+      if [[ -z "$BOARD" ]]; then
+        f=.board.json
+      else
+        f=$(get_board_file "$BOARD") || { echo "Board not found!"; exit 1; }
+      fi
+      OPENOCD_CFG=$(jq -r '.openocd_board' "$f")
+      if [[ -z "$PORT" ]]; then
+        PORT=$(prompt_for_port)
+      fi
+      ELF=$(jq -r '.output' "$f")
+      echo "Building project..."
+      make
+      if [[ ! -f "$ELF" ]]; then
+        print_error "Build failed: $ELF not found."
+        exit 1
+      fi
+      print_divider
+      print_info "${ICON_DEBUG} Debugging on board: ${BOLD}$(jq -r '.name' "$f")${NC}"
+      run_board_cmd "$BOARD" "$ELF" debug "$PORT"
+      print_success "Debug session started. $ICON_SUCCESS"
+      print_divider
+      exit $?
+      ;;
+    *)
+      print_error "Unknown command: $1"
+      print_info "Run 'embed help' for usage."
+      exit 1
+      ;;
+  esac
+fi
+
+
+

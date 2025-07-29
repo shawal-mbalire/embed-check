@@ -1,0 +1,10 @@
+{
+  "name": "ESP32 DevKit",
+  "family": "esp32",
+  "mcu": "xtensa-esp32",
+  "toolchain": "xtensa-esp32-elf-gcc",
+  "output": "main.elf",
+  "upload": "esptool.py --chip esp32 --port {port} write_flash -z 0x1000 {elf}",
+  "debug": "xtensa-esp32-elf-gdb {elf} -ex 'target remote :3333'",
+  "usb_ids": ["10c4:ea60", "1a86:7523"]
+} 

@@ -1,0 +1,8 @@
+{
+  "name": "STM32F103C8",
+  "family": "stm32",
+  "mcu": "cortex-m3",
+  "toolchain": "arm-none-eabi-gcc",
+  "upload": "st-flash write {elf} 0x8000000",
+  "debug": "openocd -f openocd/stm32f1.cfg & arm-none-eabi-gdb {elf} -ex 'target remote localhost:3333'"
+} 
